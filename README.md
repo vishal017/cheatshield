@@ -6,6 +6,6 @@ This is the basic overflow of the project
 
 
 Steps to run this project:
-1) Install miniconda and create a virtual environment
-2) Download the required files using
+1) Create a virtual environment
+2) Download the required files using the command
    pip install -r requirements.txt
