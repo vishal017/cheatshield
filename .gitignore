@@ -7,7 +7,11 @@ __pycache__/
 *.so
 
 # Project specific settings
-# .vs
+.vs
+
+# Dataset and models
+data/
+models/
 
 # Distribution / packaging
 .Python
