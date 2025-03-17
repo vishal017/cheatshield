@@ -37,7 +37,7 @@ def create_eye_blink_model(input_shape=(24, 24, 1)):
 # Train the model
 def train_eye_blink_model():
     # Load the dataset
-    data_dir = "data/face_images/eye_blink"
+    data_dir = "data\\face_images\\eye_blink"
     images, labels = load_dataset(data_dir)
 
     # Reshape images for CNN input
