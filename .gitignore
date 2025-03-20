@@ -9,9 +9,15 @@ __pycache__/
 # Project specific settings
 .vs
 
+# Fully rebuilt the model on 20.03.25
+# Face detection--> MTCNN
+# Object detection --> Yolov5 trained on custom data
+# Audio detection--> YAMNet
+# System control--> Pyautogui, keyboard, QT
+
 # Dataset and models
-data/
-models/
+# data/
+# models/
 
 # Distribution / packaging
 .Python
