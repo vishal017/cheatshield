@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Cheating Prevention</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Iframe to load the external test website -->
+        <iframe id="test-iframe" src="{{ test_website_url }}" frameborder="0"></iframe>
+
+        <!-- Overlay for detection interface -->
+        <div id="overlay">
+            <h1>Online Cheating Prevention - Test Monitoring</h1>
+            <div id="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Video Feed">
+            </div>
+            <div id="instructions">
+                <p>Kindly don't indulge in any malpractice.</p>
+            </div>
+            <div id="alerts"></div>
+            <div id="end-test">
+                <h2>End Test</h2>
+                <form method="POST" action="{{ url_for('shutdown') }}">
+                    <label for="password">Enter Password to End Test:</label>
+                    <input type="password" id="password" name="password" required>
+                    <button type="submit">End Test</button>
+                </form>
+                {% if error %}
+                    <p style="color: red;">{{ error }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script>
+        // Request fullscreen mode
+        function enterFullscreen() {
+            const element = document.documentElement;
+            if (element.requestFullscreen) {
+                element.requestFullscreen();
+            } else if (element.mozRequestFullScreen) { // Firefox
+                element.mozRequestFullScreen();
+            } else if (element.webkitRequestFullscreen) { // Chrome, Safari, Opera
+                element.webkitRequestFullscreen();
+            } else if (element.msRequestFullscreen) { // IE/Edge
+                element.msRequestFullscreen();
+            }
+        }
+        enterFullscreen();
+
+        // Prevent exiting fullscreen
+        document.addEventListener('fullscreenchange', (event) => {
+            if (!document.fullscreenElement) {
+                enterFullscreen();
+                alert("Warning: You cannot exit fullscreen mode during the test!");
+            }
+        });
+
+        // Prevent copy-paste in the browser
+        document.addEventListener('copy', (e) => e.preventDefault());
+        document.addEventListener('paste', (e) => e.preventDefault());
+        document.addEventListener('cut', (e) => e.preventDefault());
+
+        // Detect tab switching or focus loss
+        window.addEventListener('blur', () => {
+            alert("Warning: Do not switch tabs or minimize the window!");
+            enterFullscreen();
+        });
+
+        // Prevent right-click (context menu)
+        document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Prevent navigation away from the page
+        window.addEventListener('beforeunload', (e) => {
+            e.preventDefault();
+            e.returnValue = 'You cannot leave the test until it is completed!';
+        });
+
+        // Fetch and display alerts
+        function fetchAlerts() {
+            fetch('/get_alerts')
+                .then(response => response.json())
+                .then(data => {
+                    const alertsDiv = document.getElementById('alerts');
+                    alertsDiv.innerHTML = ''; // Clear previous alerts
+                    data.alerts.forEach(alert => {
+                        if (alert) {
+                            const p = document.createElement('p');
+                            p.textContent = alert;
+                            alertsDiv.appendChild(p);
+                        }
+                    });
+                })
+                .catch(error => console.error('Error fetching alerts:', error));
+        }
+
+        // Fetch alerts every second
+        setInterval(fetchAlerts, 1000);
+        fetchAlerts(); // Initial fetch
+    </script>
+</body>
+</html>
