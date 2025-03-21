@@ -1,42 +1,52 @@
-import torch
 import cv2
+import torch
+import numpy as np
+from yolov5 import YOLOv5  # Import the official YOLOv5 package
 
 class ObjectDetector:
     def __init__(self):
+        # Path to your custom-trained weights
         self.weights_path = r"models\best.pt"
-        self.img_size = 416  # Reduced from 640 to 416
-        self.conf_thres = 0.286
-        self.iou_thres = 0.45
+        self.conf_thres = 0.286  # Confidence threshold
+        self.iou_thres = 0.45    # IoU threshold for NMS
         self.classes = ['book', 'mobile phone', 'laptop']
-        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=self.weights_path, force_reload=True)
-        self.model.conf = self.conf_thres
-        self.model.iou = self.iou_thres
-        self.model.classes = None
-        self.model.eval()
+        
+        # Initialize the YOLOv5 model using the official package
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.model = YOLOv5(model_path=self.weights_path, device=self.device)  # Removed 'size' parameter
+        self.model.conf = self.conf_thres  # Set confidence threshold
+        self.model.iou = self.iou_thres    # Set IoU threshold
         self.alerts = {"objects": ""}
 
     def process_image(self, frame):
-        frame_resized = cv2.resize(frame, (self.img_size, self.img_size))
-        frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-        results = self.model(frame_rgb)
-        preds = results.xyxy[0].cpu().numpy()
+        # Convert frame to RGB (YOLOv5 expects RGB images)
+        img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Perform inference using the YOLOv5 model
+        results = self.model.predict(img)
+        
+        # Extract detections
         h, w = frame.shape[:2]
-        scale_x, scale_y = w / self.img_size, h / self.img_size
-
         suspicious_objects = []
-        for pred in preds:
-            x1, y1, x2, y2, conf, cls = pred
-            x1, y1, x2, y2 = int(x1 * scale_x), int(y1 * scale_y), int(x2 * scale_x), int(y2 * scale_y)
-            label = f"{self.classes[int(cls)]} {conf:.2f}"
-            color = (0, 255, 0) if self.classes[int(cls)] != 'mobile phone' else (0, 0, 255)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        
+        # Process the results
+        if results.pred[0].shape[0] > 0:  # If there are detections
+            for det in results.pred[0]:
+                x1, y1, x2, y2, conf, cls = det
+                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                class_name = self.classes[int(cls)]
+                
+                # Draw bounding box and label on the frame
+                color = (0, 255, 0) if class_name != 'mobile phone' else (0, 0, 255)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                label = f"{class_name} {conf:.2f}"
+                cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                
+                print(f"Detected object: {class_name} (Confidence: {conf:.2f})")  # Debug print
+                if class_name in ['mobile phone', 'book', 'laptop']:
+                    suspicious_objects.append(f"{class_name} (Confidence: {conf:.2f})")
 
-            # Flag mobile phones as suspicious
-            if self.classes[int(cls)] == 'mobile phone':
-                suspicious_objects.append(f"Mobile phone (Confidence: {conf:.2f})")
-
-        # Update alerts
+        # Set alerts if suspicious objects are detected
         if suspicious_objects:
             self.alerts["objects"] = f"Abnormal Movement Detected: {', '.join(suspicious_objects)}"
         else:

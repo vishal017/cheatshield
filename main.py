@@ -3,12 +3,12 @@ import cv2
 import numpy as np
 import threading
 import time
-import webbrowser
 import psutil
 import torch
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton, QLineEdit, QDialog
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QUrl
 from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtWebEngineWidgets import QWebEngineView
 from modules.object_detection import ObjectDetector
 from modules.face_detection import FaceDetector
 from modules.audio_detection import AudioDetector
@@ -50,6 +50,38 @@ class MonitoringWindow(QMainWindow):
         self.setWindowTitle("Online Cheating Prevention - Monitoring")
         self.setGeometry(0, 0, 300, 280)
         
+        # Apply CSS styles to improve design (without changing position)
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                border-radius: 10px;
+            }
+            QLabel#webcam_label {
+                border: 2px solid #333;
+                border-radius: 5px;
+                background-color: #000;
+            }
+            QLabel#violation_label {
+                font-size: 14px;
+                color: #d32f2f;
+                font-weight: bold;
+                margin-top: 5px;
+                margin-bottom: 5px;
+            }
+            QPushButton {
+                background-color: #ff4444;
+                color: white;
+                padding: 5px;
+                font-size: 14px;
+                border: none;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #cc0000;
+            }
+        """)
+        
         # Main widget and layout
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
@@ -58,24 +90,141 @@ class MonitoringWindow(QMainWindow):
         
         # Webcam feed
         self.webcam_label = QLabel()
+        self.webcam_label.setObjectName("webcam_label")
         self.webcam_label.setFixedSize(280, 180)
+        self.webcam_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(self.webcam_label)
         
         # Violation count
         self.violation_label = QLabel("Violations: 0/10")
-        self.violation_label.setStyleSheet("font-size: 14px; color: red;")
+        self.violation_label.setObjectName("violation_label")
         layout.addWidget(self.violation_label)
         
         # End Test button
         end_test_button = QPushButton("End Test")
-        end_test_button.setStyleSheet("background-color: #ff4444; color: white; padding: 5px; font-size: 14px;")
         end_test_button.clicked.connect(self.end_test)
         layout.addWidget(end_test_button)
+        
+        # Web view for the test website (replacing webbrowser.open)
+        self.web_view = QWebEngineView()
+        self.web_view.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+        screen = QApplication.primaryScreen().size()
+        self.web_view.setGeometry(0, 0, screen.width(), screen.height())  # Fullscreen
+        self.test_url = "https://www.somewebsite.com"
+        self.web_view.load(QUrl(self.test_url))
+        
+        # Inject JavaScript to enforce fullscreen and disable shortcuts/right-click
+        js_code = """
+        // Enter fullscreen mode
+        document.documentElement.requestFullscreen();
+        
+        // Disable right-click
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+        
+        // Disable keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Block Windows+D (keyCode 68 is 'D')
+            if (e.key === 'd' && e.metaKey) {
+                e.preventDefault();
+            }
+            // Block F11 (exit fullscreen)
+            if (e.key === 'F11') {
+                e.preventDefault();
+            }
+            // Block Alt+Tab, Alt+F4, etc.
+            if (e.altKey) {
+                e.preventDefault();
+            }
+            // Block Ctrl+Shift+Esc (Task Manager)
+            if (e.ctrlKey && e.shiftKey && e.key === 'Escape') {
+                e.preventDefault();
+            }
+        });
+        
+        // Ensure fullscreen on focus
+        window.addEventListener('blur', function() {
+            setTimeout(() => {
+                document.documentElement.requestFullscreen();
+            }, 100);
+        });
+        """
+        self.web_view.page().runJavaScript(js_code)
+        self.web_view.show()
+        
+        # Alert overlay for warnings
+        self.alert_view = QWebEngineView()
+        self.alert_view.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+        self.alert_view.setAttribute(Qt.WA_TranslucentBackground)
+        self.alert_view.setFixedSize(800, 100)  # Wider to accommodate longer messages
+        self.alert_view.setGeometry(screen.width() // 2 - 400, 50, 800, 100)  # Position near the top
+        
+        # Embed the HTML content with warning display logic
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Violation Alert</title>
+            <style>
+                body {
+                    background: transparent;
+                    margin: 0;
+                    padding: 0;
+                }
+            </style>
+        </head>
+        <body>
+            <script>
+                function showViolationAlert(message) {
+                    // Remove any existing alert
+                    const existingAlert = document.getElementById('violation-alert');
+                    if (existingAlert) {
+                        existingAlert.remove();
+                    }
+
+                    // Create a div for the alert
+                    const alertDiv = document.createElement('div');
+                    alertDiv.id = 'violation-alert';
+                    alertDiv.style.position = 'fixed';
+                    alertDiv.style.top = '10%';
+                    alertDiv.style.left = '50%';
+                    alertDiv.style.transform = 'translateX(-50%)';
+                    alertDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.9)';
+                    alertDiv.style.color = 'white';
+                    alertDiv.style.padding = '15px 30px';
+                    alertDiv.style.borderRadius = '8px';
+                    alertDiv.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
+                    alertDiv.style.zIndex = '9999';
+                    alertDiv.style.fontSize = '18px';
+                    alertDiv.style.fontFamily = 'Arial, sans-serif';
+                    alertDiv.style.textAlign = 'center';
+                    alertDiv.style.maxWidth = '80%';
+                    alertDiv.style.wordWrap = 'break-word';
+                    alertDiv.innerHTML = message;
+
+                    document.body.appendChild(alertDiv);
+
+                    // Remove the alert after 10 seconds
+                    setTimeout(() => {
+                        alertDiv.remove();
+                    }, 10000);
+                }
+
+                function displayAlert(message) {
+                    showViolationAlert(message);
+                }
+            </script>
+        </body>
+        </html>
+        """
+        self.alert_view.setHtml(html_content, QUrl.fromLocalFile(r"C:\Users\mvish\Projects\cheatshield"))
+        self.alert_view.hide()
         
         # Detection modules
         self.object_detector = ObjectDetector()
         self.face_detector = FaceDetector()
-        self.audio_detector = AudioDetector(sample_rate=16000, chunk_size=1024, detection_interval=2.0)
+        self.audio_detector = AudioDetector(sample_rate=16000, chunk_size=1024, detection_interval=3.0)
         
         # Webcam
         self.cap = cv2.VideoCapture(0)
@@ -90,33 +239,26 @@ class MonitoringWindow(QMainWindow):
         self.warning_count = 0
         self.max_warnings = 10
         self.frame_counter = 0
-        self.closing = False  # Flag to indicate test is closing
-        
-        # Open the test website in the default browser
-        self.test_url = "https://ps.bitsathy.ac.in/"
-        webbrowser.open(self.test_url)
+        self.closing = False
+        self.last_violation_time = 0
+        self.violation_cooldown = 15  # 15 seconds cooldown between violations
         
         # Start system controls
         self.system_controller = SystemController()
         self.system_controller.start_test()
         
-        # Start detection threads
+        # Start audio detection thread
         self.audio_thread = threading.Thread(target=self.audio_monitoring)
         self.audio_thread.daemon = True
         self.audio_thread.start()
         
-        # Start object detection in a separate thread
-        self.object_detection_thread = threading.Thread(target=self.object_detection_loop)
-        self.object_detection_thread.daemon = True
-        self.object_detection_thread.start()
-        
         # Start webcam update
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(100)  # 10 FPS (100ms interval)
+        self.timer.start(50)  # 20 FPS (50ms interval)
         
-        # Keep window on top
-        self.setWindowFlags(Qt.WindowStaysOnTopHint)
+        # Keep window on top and remove window controls
+        self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         self.show()
 
     def update_frame(self):
@@ -129,15 +271,23 @@ class MonitoringWindow(QMainWindow):
         
         self.frame_counter += 1
         
+        # Process frame with object detection (every 3rd frame)
+        if self.frame_counter % 3 == 0:
+            frame = self.object_detector.process_image(frame)
+            if self.object_detector.alerts["objects"]:
+                # Customize message for mobile phone detection
+                if "mobile phone" in self.object_detector.alerts["objects"].lower():
+                    self.display_warning("Warning: Mobile phone detected")
+                else:
+                    self.display_warning(self.object_detector.alerts["objects"])
+        
         # Process frame with face detection (every other frame)
         if self.frame_counter % 2 == 0:
             num_faces, frame = self.face_detector.detect_faces(frame)
-            if num_faces > 1:
+            if num_faces == 0:
+                self.display_warning("Face not visible, please show your face")
+            elif num_faces > 1:
                 self.display_warning("Abnormal Movement Detected: Multiple faces detected!")
-        
-        # Use the latest frame processed by object detection
-        if hasattr(self, 'latest_object_frame'):
-            frame = self.latest_object_frame
         
         # Resize frame for display
         frame = cv2.resize(frame, (280, 180))
@@ -147,41 +297,45 @@ class MonitoringWindow(QMainWindow):
         image = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
         self.webcam_label.setPixmap(QPixmap.fromImage(image))
 
-    def object_detection_loop(self):
-        while self.test_active and not self.closing:
-            if self.cap.isOpened():
-                ret, frame = self.cap.read()
-                if ret:
-                    # Process frame with object detection (every 3rd frame)
-                    if self.frame_counter % 3 == 0:
-                        frame = self.object_detector.process_image(frame)
-                        if self.object_detector.alerts["objects"]:
-                            self.display_warning(self.object_detector.alerts["objects"])
-                    self.latest_object_frame = frame
-            time.sleep(0.1)  # Match the 10 FPS rate
-
     def audio_monitoring(self):
         while self.test_active and not self.closing:
             is_suspicious, confidence, message = self.audio_detector.detect_audio()
             if is_suspicious:
-                sound_type = message.split(' - ')[1]
-                self.display_warning(f"Abnormal Movement Detected: Suspicious sound - {sound_type}")
-            time.sleep(0.1)
+                self.display_warning(message)
+            time.sleep(self.audio_detector.detection_interval)
 
     def display_warning(self, message):
         if not self.test_active or self.closing:
             return
-        self.warning_count += 1
-        self.violation_label.setText(f"Violations: {self.warning_count}/{self.max_warnings}")
-        print(f"Warning {self.warning_count}/{self.max_warnings}: {message}")
+        
+        # Check if enough time has passed since the last violation
+        current_time = time.time()
+        if current_time - self.last_violation_time < self.violation_cooldown:
+            return  # Ignore the violation if within cooldown period
+        
+        # Increment violation count only for specific warnings
+        if "Face not visible" not in message:  # Don't count "Face not visible" as a violation
+            self.warning_count += 1
+            self.last_violation_time = current_time
+            self.violation_label.setText(f"Violations: {self.warning_count}/{self.max_warnings}")
+            print(f"Warning {self.warning_count}/{self.max_warnings}: {message}")
+        else:
+            print(f"Warning (not counted): {message}")
+        
+        # Show JavaScript alert
+        self.alert_view.show()
+        self.alert_view.page().runJavaScript(f'displayAlert("{message}");')
+        
+        # Only end the test if the maximum warnings are reached
         if self.warning_count >= self.max_warnings:
+            print("Maximum warnings reached. Ending test...")
             self.end_test(automatic=True)
 
     def end_test(self, automatic=False):
         if self.closing:
             return
         
-        self.closing = True  # Set flag to stop all processing
+        self.closing = True
         self.test_active = False
         
         if automatic:
@@ -196,40 +350,25 @@ class MonitoringWindow(QMainWindow):
         else:
             self.closing = False
             self.test_active = True
-            # Restart the timer and threads if the password is incorrect
-            self.timer.start(100)
+            self.timer.start(50)
             self.audio_thread = threading.Thread(target=self.audio_monitoring)
             self.audio_thread.daemon = True
             self.audio_thread.start()
-            self.object_detection_thread = threading.Thread(target=self.object_detection_loop)
-            self.object_detection_thread.daemon = True
-            self.object_detection_thread.start()
 
     def cleanup(self):
-        # Stop the timer immediately to prevent new frames
         self.timer.stop()
-        
-        # Stop system controls
         self.system_controller.stop_test()
-        
-        # Close audio detector
         self.audio_detector.close()
-        
-        # Release the camera
         if self.cap is not None:
             self.cap.release()
             self.cap = None
-        
-        # Clean up object detector (YOLOv5 model)
         if hasattr(self, 'object_detector'):
             del self.object_detector
-            torch.cuda.empty_cache()  # Clear GPU memory if using GPU
-        
-        # Clean up face detector
+            torch.cuda.empty_cache()
         if hasattr(self, 'face_detector'):
             del self.face_detector
-        
-        # Close the browser
+        self.alert_view.hide()
+        self.web_view.hide()
         self.close_browser()
 
     def close_browser(self):
