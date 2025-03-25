@@ -35,7 +35,8 @@ class EndTestDialog(QDialog):
         layout.addWidget(submit_button)
         
         self.setLayout(layout)
-        self.password = "default"  # Default password
+        # Password should be set by the user in a configuration file or environment variable
+        self.password = "SET_YOUR_PASSWORD"  # Placeholder; replace with your own password
 
     def check_password(self):
         entered_password = self.password_input.text()
@@ -105,12 +106,13 @@ class MonitoringWindow(QMainWindow):
         end_test_button.clicked.connect(self.end_test)
         layout.addWidget(end_test_button)
         
-        # Web view for the test website (replacing webbrowser.open)
+        # Web view for the test website (reverting to QWebEngineView)
         self.web_view = QWebEngineView()
         self.web_view.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         screen = QApplication.primaryScreen().size()
         self.web_view.setGeometry(0, 0, screen.width(), screen.height())  # Fullscreen
-        self.test_url = "https://www.somewebsite.com"
+        # Replace with the actual test URL or configure via environment variable
+        self.test_url = "https://example.com/"  # Placeholder; set your test URL
         self.web_view.load(QUrl(self.test_url))
         
         # Inject JavaScript to enforce fullscreen and disable shortcuts/right-click
@@ -153,10 +155,11 @@ class MonitoringWindow(QMainWindow):
         self.web_view.page().runJavaScript(js_code)
         self.web_view.show()
         
-        # Alert overlay for warnings
+        # Alert overlay for warnings (reverting to QWebEngineView)
         self.alert_view = QWebEngineView()
         self.alert_view.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         self.alert_view.setAttribute(Qt.WA_TranslucentBackground)
+        self.alert_view.setStyleSheet("background: transparent;")  # Ensure transparency
         self.alert_view.setFixedSize(800, 100)  # Wider to accommodate longer messages
         self.alert_view.setGeometry(screen.width() // 2 - 400, 50, 800, 100)  # Position near the top
         
@@ -168,9 +171,26 @@ class MonitoringWindow(QMainWindow):
             <title>Violation Alert</title>
             <style>
                 body {
-                    background: transparent;
+                    background: transparent !important;
                     margin: 0;
                     padding: 0;
+                }
+                #violation-alert {
+                    position: fixed;
+                    top: 10%;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background-color: rgba(255, 0, 0, 0.9);
+                    color: white;
+                    padding: 15px 30px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                    z-index: 9999;
+                    font-size: 18px;
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    max-width: 80%;
+                    word-wrap: break-word;
                 }
             </style>
         </head>
@@ -186,23 +206,7 @@ class MonitoringWindow(QMainWindow):
                     // Create a div for the alert
                     const alertDiv = document.createElement('div');
                     alertDiv.id = 'violation-alert';
-                    alertDiv.style.position = 'fixed';
-                    alertDiv.style.top = '10%';
-                    alertDiv.style.left = '50%';
-                    alertDiv.style.transform = 'translateX(-50%)';
-                    alertDiv.style.backgroundColor = 'rgba(255, 0, 0, 0.9)';
-                    alertDiv.style.color = 'white';
-                    alertDiv.style.padding = '15px 30px';
-                    alertDiv.style.borderRadius = '8px';
-                    alertDiv.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.3)';
-                    alertDiv.style.zIndex = '9999';
-                    alertDiv.style.fontSize = '18px';
-                    alertDiv.style.fontFamily = 'Arial, sans-serif';
-                    alertDiv.style.textAlign = 'center';
-                    alertDiv.style.maxWidth = '80%';
-                    alertDiv.style.wordWrap = 'break-word';
                     alertDiv.innerHTML = message;
-
                     document.body.appendChild(alertDiv);
 
                     // Remove the alert after 10 seconds
@@ -218,21 +222,22 @@ class MonitoringWindow(QMainWindow):
         </body>
         </html>
         """
-        self.alert_view.setHtml(html_content, QUrl.fromLocalFile(r"C:\Users\mvish\Projects\cheatshield"))
+        # Removed personal file path; use a generic base URL
+        self.alert_view.setHtml(html_content, QUrl("file://"))
         self.alert_view.hide()
         
         # Detection modules
         self.object_detector = ObjectDetector()
         self.face_detector = FaceDetector()
-        self.audio_detector = AudioDetector(sample_rate=16000, chunk_size=1024, detection_interval=3.0)
+        self.audio_detector = AudioDetector(sample_rate=16000, chunk_size=1024, detection_interval=5.0)
         
         # Webcam
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
             print("Error: Could not open webcam.")
             sys.exit()
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 160)  # Reduced resolution
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
         
         # Test state
         self.test_active = True
@@ -255,7 +260,7 @@ class MonitoringWindow(QMainWindow):
         # Start webcam update
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(50)  # 20 FPS (50ms interval)
+        self.timer.start(100)  # 10 FPS (100ms interval)
         
         # Keep window on top and remove window controls
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
@@ -271,8 +276,8 @@ class MonitoringWindow(QMainWindow):
         
         self.frame_counter += 1
         
-        # Process frame with object detection (every 3rd frame)
-        if self.frame_counter % 3 == 0:
+        # Process frame with object detection (every 8th frame)
+        if self.frame_counter % 8 == 0:
             frame = self.object_detector.process_image(frame)
             if self.object_detector.alerts["objects"]:
                 # Customize message for mobile phone detection
@@ -281,8 +286,8 @@ class MonitoringWindow(QMainWindow):
                 else:
                     self.display_warning(self.object_detector.alerts["objects"])
         
-        # Process frame with face detection (every other frame)
-        if self.frame_counter % 2 == 0:
+        # Process frame with face detection (every 8th frame)
+        if self.frame_counter % 8 == 0:
             num_faces, frame = self.face_detector.detect_faces(frame)
             if num_faces == 0:
                 self.display_warning("Face not visible, please show your face")
@@ -296,6 +301,10 @@ class MonitoringWindow(QMainWindow):
         bytes_per_line = ch * w
         image = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
         self.webcam_label.setPixmap(QPixmap.fromImage(image))
+        
+        # Ensure the monitoring window and alert view stay on top
+        self.raise_()
+        self.alert_view.raise_()
 
     def audio_monitoring(self):
         while self.test_active and not self.closing:
@@ -326,10 +335,19 @@ class MonitoringWindow(QMainWindow):
         self.alert_view.show()
         self.alert_view.page().runJavaScript(f'displayAlert("{message}");')
         
+        # Ensure the alert view stays on top
+        self.alert_view.raise_()
+        
         # Only end the test if the maximum warnings are reached
         if self.warning_count >= self.max_warnings:
             print("Maximum warnings reached. Ending test...")
             self.end_test(automatic=True)
+
+    def focusInEvent(self, event):
+        # Re-raise the window when it gains focus
+        self.raise_()
+        self.alert_view.raise_()
+        super().focusInEvent(event)
 
     def end_test(self, automatic=False):
         if self.closing:
@@ -350,7 +368,7 @@ class MonitoringWindow(QMainWindow):
         else:
             self.closing = False
             self.test_active = True
-            self.timer.start(50)
+            self.timer.start(100)
             self.audio_thread = threading.Thread(target=self.audio_monitoring)
             self.audio_thread.daemon = True
             self.audio_thread.start()
@@ -372,7 +390,7 @@ class MonitoringWindow(QMainWindow):
         self.close_browser()
 
     def close_browser(self):
-        browser_names = ["chrome", "firefox", "edge", "safari", "opera"]
+        browser_names = ["chrome", "firefox", "edge", "safari", "opera", "brave"]
         for proc in psutil.process_iter(['name']):
             try:
                 proc_name = proc.info['name'].lower()
