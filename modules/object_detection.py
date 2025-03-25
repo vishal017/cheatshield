@@ -7,14 +7,15 @@ class ObjectDetector:
     def __init__(self):
         # Path to your custom-trained weights
         self.weights_path = r"models\best.pt"
-        self.conf_thres = 0.286  # Confidence threshold
+        self.conf_thres = 0.2  # Lowered default confidence threshold for better book detection
+        self.mobile_conf_thres = 0.4  # Lowered confidence threshold for better mobile phone detection
         self.iou_thres = 0.45    # IoU threshold for NMS
         self.classes = ['book', 'mobile phone', 'laptop']
         
         # Initialize the YOLOv5 model using the official package
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model = YOLOv5(model_path=self.weights_path, device=self.device)  # Removed 'size' parameter
-        self.model.conf = self.conf_thres  # Set confidence threshold
+        self.model = YOLOv5(model_path=self.weights_path, device=self.device)
+        self.model.conf = self.conf_thres  # Set default confidence threshold
         self.model.iou = self.iou_thres    # Set IoU threshold
         self.alerts = {"objects": ""}
 
@@ -35,6 +36,11 @@ class ObjectDetector:
                 x1, y1, x2, y2, conf, cls = det
                 x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
                 class_name = self.classes[int(cls)]
+                
+                # Apply higher confidence threshold for mobile phones
+                if class_name == 'mobile phone' and conf < self.mobile_conf_thres:
+                    print(f"Ignored mobile phone detection (Confidence: {conf:.2f} < {self.mobile_conf_thres})")
+                    continue
                 
                 # Draw bounding box and label on the frame
                 color = (0, 255, 0) if class_name != 'mobile phone' else (0, 0, 255)
